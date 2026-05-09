@@ -345,7 +345,7 @@ Para el 11 de junio, el proyecto está completo cuando:
 | Capa | Tecnología | Por qué |
 |------|-----------|---------|
 | Agente | Python ADK | Requerimiento hackathon, nativo en Google Cloud |
-| Modelo | Gemini 2.0 Flash | Rápido, barato, suficiente para razonamiento multi-step |
+| Modelo | Gemini 2.5 Flash | Rápido, barato, suficiente para razonamiento multi-step |
 | Agent Tools | GitLab MCP Server | Requerimiento hackathon (Partner Power) |
 | Runtime | Agent Engine | Managed, stateful, deployment con un comando |
 | Backend | FastAPI + Cloud Run | Python, serverless, se integra limpio con ADK |
