@@ -5,17 +5,17 @@
 
 ## 1. VISION
 
-**SnapShop** es un agente de IA que permite a cualquier comercio chico del mundo tener una tienda online en minutos, sin conocimiento técnico, sin cargar productos uno por uno, y sin fricción.
+**SnapShop es dos apps en una** — como el PedidosYa de los comercios chicos, pero donde PedidosYa tardó años y millones, nuestro agente lo construye en una foto.
 
-El flujo completo es una sola acción: **sacar una foto a la estantería**.
+**App 1 — Para el Vendedor:** Un agente de IA que permite a cualquier comercio chico tener una tienda online en minutos, sin conocimiento técnico, sin cargar productos uno por uno, sin fricción. El flujo completo es una sola acción: sacar una foto a la estantería. La tienda generada vive en la infraestructura de SnapShop — el vendedor no necesita hosting, dominio, ni nada.
 
-El agente hace el resto — detecta los productos, construye la tienda, y la publica. El vendedor solo customiza conversacionalmente lo que quiera cambiar. El cliente busca lo que necesita, encuentra el comercio más cercano que lo tiene, y recibe la ruta para llegar.
+**App 2 — Para el Cliente:** Una app de descubrimiento local donde el cliente busca lo que necesita por texto O por foto, y el sistema encuentra automáticamente las tiendas cercanas que tienen ese producto usando vector search sobre los embeddings generados en el flujo del vendedor. Un solo índice vectorial, dos casos de uso.
 
 **El problema real:**
 El 90% de los comercios chicos del mundo no tienen presencia online. No es porque no quieran — es porque crear una tienda en Tiendanube, Shopify, o cualquier plataforma requiere cargar productos uno por uno, escribir descripciones, subir fotos, configurar pagos, y dedicar días de trabajo. Para un almacenero, kiosquero, o ferretero, eso es imposible.
 
 **El diferencial:**
-Ninguna plataforma existente — ni Tiendanube, ni Shopify, ni MercadoShops — hace lo que SnapShop hace: foto → tienda lista en minutos, sin fricción, impulsada por un agente que razona y actúa.
+Ninguna plataforma existente hace lo que SnapShop hace: foto → tienda lista en minutos, hosteada en nuestra infraestructura, con búsqueda multimodal (texto + imagen) para los clientes. La tienda no es un link a Shopify — es parte del ecosistema SnapShop.
 
 ---
 
@@ -293,9 +293,28 @@ Esto le da al proyecto una capa de **self-improvement** — el agente puede cons
 
 ---
 
-## 7. FRONTEND — TRES VISTAS
+## 7. DOS APPS EN UNA — ARQUITECTURA DE PRODUCTO
 
-### Vista 1 — Landing / Onboarding del Vendedor
+SnapShop es fundamentalmente una plataforma de dos caras que comparten la misma infraestructura y el mismo índice vectorial.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    INFRAESTRUCTURA SNAPSHOP                     │
+│                                                                 │
+│   snapshop.app/crear    →   App del Vendedor (SvelteKit)       │
+│   snapshop.app/[slug]   →   Tienda pública (SvelteKit SSR)     │
+│   snapshop.app/buscar   →   App del Cliente (SvelteKit)        │
+│                                                                 │
+│   Todo hosteado en Vercel · Backend en Cloud Run               │
+│   El vendedor NO necesita hosting propio                        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### APP 1 — VENDEDOR
+
+#### Vista 1 — Landing
 ```
 ┌─────────────────────────────────────────────────┐
 │  📸 SnapShop                                    │
@@ -305,7 +324,7 @@ Esto le da al proyecto una capa de **self-improvement** — el agente puede cons
 └─────────────────────────────────────────────────┘
 ```
 
-### Vista 2 — Chat con el Agente (Vendedor)
+#### Vista 2 — Chat con el Agente
 ```
 ┌─────────────────────────────────────────────────┐
 │  SnapShop Agent                                 │
@@ -327,23 +346,21 @@ Esto le da al proyecto una capa de **self-improvement** — el agente puede cons
 │  ── Analizando imagen... ──                     │
 │                                                 │
 │  🤖 Detecté 23 productos ✅                     │
-│     Tu tienda está lista. ¿Querés ver           │
-│     el preview o cambiar algo?                  │
-│                                                 │
-│  [Ver mi tienda →]                             │
+│     Tu tienda está en:                          │
+│     snapshop.app/don-pepe                       │
+│     ¿Querés cambiar algo?                       │
 ├─────────────────────────────────────────────────┤
 │  Escribí algo...                    [Enviar]   │
 └─────────────────────────────────────────────────┘
 ```
 
-### Vista 3 — Tienda pública (Cliente)
+#### Vista 3 — Tienda pública hosteada en SnapShop
 ```
+URL: snapshop.app/don-pepe  ← hosteada en nuestra infra
+
 ┌─────────────────────────────────────────────────┐
 │  Almacén Don Pepe                 📍 200m       │
 │  Rivadavia 450 · Abre 8:00-20:00               │
-├─────────────────────────────────────────────────┤
-│  🔍 ¿Qué estás buscando?                       │
-│  [azúcar, fideos, leche...           ] [Buscar] │
 ├─────────────────────────────────────────────────┤
 │  ACEITES              YERBA/MATE    LÁCTEOS     │
 │  ┌──────────┐         ┌──────────┐             │
@@ -356,13 +373,21 @@ Esto le da al proyecto una capa de **self-improvement** — el agente puede cons
 └─────────────────────────────────────────────────┘
 ```
 
-### Vista 4 — Búsqueda global (Cliente sin tienda específica)
+---
+
+### APP 2 — CLIENTE
+
+El cliente no necesita saber nada del vendedor. Abre SnapShop y busca lo que necesita de DOS formas:
+
+#### Búsqueda por texto
 ```
+URL: snapshop.app/buscar
+
 ┌─────────────────────────────────────────────────┐
-│  📸 SnapShop                                    │
-│  Encontrá lo que necesitás cerca tuyo           │
+│  📸 SnapShop · Encontrá lo que necesitás        │
 ├─────────────────────────────────────────────────┤
-│  [¿Qué necesitás?                    ] [Buscar] │
+│  [azúcar, fideos, yerba...          ] [Buscar]  │
+│                               [📷 Buscar por foto] │
 ├─────────────────────────────────────────────────┤
 │  Resultados para "azúcar y fideos":             │
 │                                                 │
@@ -377,6 +402,71 @@ Esto le da al proyecto una capa de **self-improvement** — el agente puede cons
 │     [Ver tienda] [Cómo llegar]                 │
 └─────────────────────────────────────────────────┘
 ```
+
+#### Búsqueda por foto (el diferencial técnico)
+```
+Cliente saca foto de un paquete de sal que tiene en casa
+    ↓
+Gemini genera embedding de la imagen del cliente
+    ↓
+Vector search en MongoDB:
+  - similitud de embedding (imagen cliente ≈ imagen del producto en tienda)
+  - filtro geoespacial (tiendas en radio X km del cliente)
+    ↓
+Resultado: tiendas cercanas que tienen ESE producto
+  (aunque el cliente no sepa el nombre exacto)
+```
+
+**Por qué esto es poderoso:** el cliente puede buscar con una foto borrosa, sin saber la marca, sin saber el nombre. El vector search encuentra matches por similitud visual, no por texto exacto.
+
+---
+
+### EL ÍNDICE VECTORIAL — UN SOLO ÍNDICE, DOS CASOS DE USO
+
+```
+FLUJO VENDEDOR (escritura):
+  Foto estantería → Gemini detecta producto
+  → genera embedding del producto
+  → guarda en MongoDB con coordenadas de la tienda
+
+FLUJO CLIENTE TEXTO (lectura):
+  "sal de mesa" → Gemini genera embedding del texto
+  → vector search por similitud semántica + geolocalización
+  → encuentra tiendas con ese producto cerca
+
+FLUJO CLIENTE FOTO (lectura):
+  Foto del producto → Gemini genera embedding de la imagen
+  → vector search por similitud visual + geolocalización
+  → encuentra tiendas con ese producto cerca
+```
+
+Los embeddings de Gemini son multimodales — un embedding de texto y un embedding de imagen del mismo producto van a quedar cercanos en el espacio vectorial. Eso es lo que hace posible buscar por foto y encontrar resultados cargados por texto, y viceversa.
+
+---
+
+### INFRAESTRUCTURA DE HOSTING
+
+```
+snapshop.app  (Vercel)
+  ├── /crear          → onboarding del vendedor + chat con agente
+  ├── /[slug]         → tienda pública generada (SSR, dinámica)
+  │     └── don-pepe, kiosco-el-rapido, ferreteria-centro...
+  └── /buscar         → app del cliente (búsqueda texto + foto)
+
+API (Cloud Run)
+  ├── POST /agent/onboard      → inicia sesión del agente
+  ├── POST /agent/message      → mensajes del chat
+  ├── POST /search/text        → búsqueda por texto
+  ├── POST /search/image       → búsqueda por imagen
+  └── GET  /stores/[slug]      → datos de la tienda pública
+
+MongoDB Atlas
+  ├── stores collection        → info y config de cada tienda
+  ├── products collection      → catálogo con embeddings
+  └── Vector Search Index      → búsqueda multimodal
+```
+
+**El vendedor comparte un link** (snapshop.app/don-pepe) y ese link funciona para siempre, hosteado en nuestra infraestructura, sin que el vendedor tenga que hacer nada más.
 
 ---
 
