@@ -1,554 +1,180 @@
-# SnapShop — Architecture & Technical Specification
-> Google Cloud Rapid Agent Hackathon · MongoDB Track (+ Arize secondary)
+ # SnapShop vs Freight-Saver — Visión Conceptual
+> Google Cloud Rapid Agent Hackathon · Comparativa de ideas
 
 ---
 
-## 1. VISION
+# IDEA 1 — SNAPSHOP
 
-**SnapShop es dos apps en una** — como el PedidosYa de los comercios chicos, pero donde PedidosYa tardó años y millones, nuestro agente lo construye en una foto.
+## ¿Qué es?
 
-**App 1 — Para el Vendedor:** Un agente de IA que permite a cualquier comercio chico tener una tienda online en minutos, sin conocimiento técnico, sin cargar productos uno por uno, sin fricción. El flujo completo es una sola acción: sacar una foto a la estantería. La tienda generada vive en la infraestructura de SnapShop — el vendedor no necesita hosting, dominio, ni nada.
+SnapShop es una plataforma de dos caras que conecta comercios chicos con sus clientes locales usando inteligencia artificial. Es el PedidosYa de los almacenes de barrio — pero donde PedidosYa tardó años y millones en construir su red de comercios, SnapShop lo hace en una foto y una conversación.
 
-**App 2 — Para el Cliente:** Una app de descubrimiento local donde el cliente busca lo que necesita por texto O por foto, y el sistema encuentra automáticamente las tiendas cercanas que tienen ese producto usando vector search sobre los embeddings generados en el flujo del vendedor. Un solo índice vectorial, dos casos de uso.
-
-**El problema real:**
-El 90% de los comercios chicos del mundo no tienen presencia online. No es porque no quieran — es porque crear una tienda en Tiendanube, Shopify, o cualquier plataforma requiere cargar productos uno por uno, escribir descripciones, subir fotos, configurar pagos, y dedicar días de trabajo. Para un almacenero, kiosquero, o ferretero, eso es imposible.
-
-**El diferencial:**
-Ninguna plataforma existente hace lo que SnapShop hace: foto → tienda lista en minutos, hosteada en nuestra infraestructura, con búsqueda multimodal (texto + imagen) para los clientes. La tienda no es un link a Shopify — es parte del ecosistema SnapShop.
+Es dos apps en una: una para el vendedor que quiere existir online, y una para el cliente que quiere encontrar lo que necesita cerca suyo.
 
 ---
 
-## 2. OVERVIEW DE ALTO NIVEL
+## ¿Qué problema resuelve?
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    VENDEDOR                                 │
-│  Abre SnapShop, hace onboarding conversacional con          │
-│  el agente, saca foto a su estantería                       │
-└─────────────────┬───────────────────────────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────────────────────────────┐
-│              SNAPSHOP AGENT (Python ADK)                    │
-│                                                             │
-│  Gemini 2.0 Flash (texto + visión)                         │
-│                                                             │
-│  Tools via MongoDB MCP:                                     │
-│    - create_store()          - update_store_config()        │
-│    - upsert_product()        - search_products()            │
-│    - get_store()             - vector_search()              │
-│                                                             │
-│  Tools via Arize MCP:                                       │
-│    - log_detection_trace()   - get_accuracy_metrics()       │
-│    - flag_low_confidence()                                  │
-└─────────┬───────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────┐       ┌──────────────────────────────┐
-│   MONGODB ATLAS     │       │   ARIZE PHOENIX              │
-│                     │       │                              │
-│   stores/           │       │   Trazas de detección        │
-│   products/         │       │   Métricas de accuracy       │
-│   embeddings        │       │   Alertas de baja confianza  │
-│   (Vector Search)   │       │                              │
-└─────────────────────┘       └──────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────┐
-│              SVELTEKIT FRONTEND (Vercel)                    │
-│                                                             │
-│  Vista Vendedor:                                            │
-│    - Onboarding + chat con el agente                        │
-│    - Preview de la tienda generada                          │
-│    - Customización conversacional                           │
-│                                                             │
-│  Vista Cliente:                                             │
-│    - Búsqueda de productos en lenguaje natural              │
-│    - Lista de tiendas cercanas con el producto              │
-│    - Ruta para llegar (Google Maps embed)                   │
-└─────────────────────────────────────────────────────────────┘
-```
+**Del lado del vendedor:**
+El 90% de los comercios chicos del mundo — almacenes, kioscos, ferreterías, verdulerías — no tienen presencia online. No es porque no quieran. Es porque crear una tienda en Tiendanube o Shopify requiere fotografiar cada producto individualmente, escribir nombres y descripciones uno por uno, configurar categorías, métodos de pago y dominio, y dedicar días o semanas de trabajo. Para un almacenero que trabaja solo 12 horas por día, eso es imposible.
+
+**Del lado del cliente:**
+El cliente que necesita sal a las 11pm, o que busca un repuesto específico, no tiene forma de saber qué comercio cercano lo tiene sin salir a caminar de puerta en puerta. Los buscadores generales como Google Maps no tienen información de stock en tiempo real de comercios chicos.
+
+**El resultado:** millones de comercios invisibles para sus propios clientes a tres cuadras de distancia. Dinero perdido de ambos lados.
 
 ---
 
-## 3. FLUJOS PRINCIPALES
+## ¿Qué hace?
 
-### 3.1 Flujo del Vendedor — Crear tienda
+### Para el vendedor:
+El vendedor abre SnapShop, tiene una conversación corta con un agente de IA (nombre del negocio, dirección, tipo de productos), saca **una sola foto** a su estantería, y en menos de 5 minutos tiene una tienda online publicada y funcional. No necesita saber nada de tecnología. No necesita pagar hosting. No necesita configurar nada. La tienda vive en la infraestructura de SnapShop para siempre.
 
-```
-PASO 1 — ONBOARDING CONVERSACIONAL
-  Agente: "Hola! Vamos a crear tu tienda. ¿Cómo se llama tu negocio?"
-  Vendedor: "Almacén Don Pepe"
-  Agente: "¿En qué dirección estás?"
-  Vendedor: "Rivadavia 450, Río Cuarto"
-  Agente: "¿Qué tipo de productos vendés principalmente?"
-  Vendedor: "Almacén, fiambrería"
-  → Agente crea el documento base de la tienda en MongoDB
+Después puede ajustar precios, agregar información, cambiar colores — todo conversando con el agente en lenguaje natural, como si le mandara un mensaje de WhatsApp.
 
-PASO 2 — FOTO A LA ESTANTERÍA
-  Vendedor sube foto(s) de su estantería
-  → Gemini Vision analiza la imagen
-  → Detecta productos: nombre, precio (si está visible), categoría
-  → Genera embeddings para vector search
-  → Upserta cada producto en MongoDB
-  → Arize loguea la traza de detección con confidence scores
+### Para el cliente:
+El cliente abre SnapShop y busca lo que necesita de dos formas:
 
-PASO 3 — PREVIEW Y CONFIRMACIÓN
-  Agente muestra la tienda generada:
-  "Detecté 23 productos. Tu tienda está lista.
-   Aquí está el preview: [link]
-   ¿Querés cambiar algo?"
+- **Por texto:** escribe "azúcar y fideos" y el sistema le muestra qué almacenes cercanos los tienen, con precio y distancia.
+- **Por foto:** saca una foto del producto que necesita (aunque no sepa el nombre exacto, aunque la foto sea borrosa) y el sistema encuentra tiendas cercanas que tienen ese producto por similitud visual.
 
-PASO 4 — CUSTOMIZACIÓN CONVERSACIONAL
-  Vendedor: "Cambiá el color a verde"
-  → Agente actualiza store_config en MongoDB
-
-  Vendedor: "El aceite Cocinero no cuesta $1500, cuesta $1800"
-  → Agente actualiza el producto específico
-
-  Vendedor: "Agregá que hacemos envíos los martes y jueves"
-  → Agente actualiza la descripción de la tienda
-
-PASO 5 — PUBLICACIÓN
-  Agente: "Tu tienda está publicada en snapshop.app/don-pepe
-           Compartila con tus clientes!"
-```
-
-### 3.2 Flujo del Cliente — Encontrar producto
-
-```
-PASO 1 — BÚSQUEDA EN LENGUAJE NATURAL
-  Cliente escribe: "necesito azúcar y fideos, estoy en el centro"
-
-PASO 2 — RAZONAMIENTO DEL AGENTE
-  Agente procesa la consulta:
-  - Identifica productos buscados: ["azúcar", "fideos"]
-  - Identifica ubicación: "centro de Río Cuarto"
-  - Ejecuta vector search en MongoDB por cada producto
-  - Filtra tiendas por proximidad geográfica
-  - Rankea por: distancia + cantidad de productos disponibles
-
-PASO 3 — RESULTADO
-  Agente devuelve:
-  "Encontré 3 tiendas cerca tuyo que tienen azúcar y fideos:
-   
-   1. Almacén Don Pepe — 200m
-      ✅ Azúcar Ledesma 1kg — $850
-      ✅ Fideos Matarazzo — $620
-      
-   2. Kiosco El Rápido — 350m
-      ✅ Azúcar — $900
-      ❌ Fideos (no disponible)
-   
-   [Ver ruta a Don Pepe →]"
-```
+En ambos casos recibe la lista de tiendas ordenadas por cercanía, con precios, y un botón para ir directo al mapa.
 
 ---
 
-## 4. COMPORTAMIENTO DEL AGENTE EN DETALLE
+## ¿Cómo lo hace? (sin tecnicismos)
 
-### 4.1 Detección de productos (Gemini Vision)
+El agente de IA analiza la foto de la estantería y "ve" los productos — entiende qué es cada cosa, en qué categoría entra, y si puede leer el precio. Con esa información construye automáticamente el catálogo de la tienda.
 
-El agente usa Gemini 2.0 Flash con capacidades de visión para analizar cada foto. El prompt de detección está diseñado para extraer:
-
-```json
-{
-  "products": [
-    {
-      "name": "Aceite Cocinero 900ml",
-      "category": "aceites",
-      "price": 1500,
-      "price_visible": true,
-      "confidence": 0.94,
-      "quantity_estimate": "varios"
-    },
-    {
-      "name": "Yerba Playadito 500g",
-      "category": "yerba/mate",
-      "price": null,
-      "price_visible": false,
-      "confidence": 0.88,
-      "quantity_estimate": "varios"
-    }
-  ],
-  "image_quality": "good",
-  "products_detected": 23,
-  "low_confidence_count": 2
-}
-```
-
-**Manejo de casos borde:**
-- Producto con baja confianza (<0.7): se agrega con flag `needs_review`, el agente lo menciona al vendedor
-- Precio no visible: producto se crea sin precio, agente pregunta al vendedor
-- Foto de mala calidad: agente pide otra foto antes de continuar
-- Producto no identificable: se ignora, se loguea en Arize como `undetected`
-
-### 4.2 Customización conversacional
-
-El agente interpreta comandos en lenguaje natural y los traduce a operaciones sobre MongoDB:
-
-| Comando del vendedor | Acción del agente |
-|---------------------|-------------------|
-| "El aceite cuesta $1800" | `update_product(name="aceite", price=1800)` |
-| "Cambiá el color a verde" | `update_store_config(primary_color="#00C851")` |
-| "Agregá que abrimos de 8 a 20" | `update_store(hours="8:00-20:00")` |
-| "Ocultá los productos sin precio" | `filter_products(price_visible=true)` |
-| "Agregá una foto del local" | `update_store(banner_image=<upload>)` |
-| "Sacamos empanadas los viernes" | `add_product(name="Empanadas", category="comidas", days="viernes")` |
-
-### 4.3 Rol de Arize Phoenix
-
-Arize monitorea la calidad del agente de visión en producción:
-
-- **Por cada detección:** loguea un span con `confidence_score`, `product_name`, `image_quality`
-- **Alertas automáticas:** si confidence promedio baja de 0.75 en una sesión, flagea para revisión
-- **Dashboard de accuracy:** cuántos productos detectados vs confirmados por el vendedor
-- **Dataset de evaluación:** acumula pares imagen→detección para mejorar el prompt
-
-Esto le da al proyecto una capa de **self-improvement** — el agente puede consultar sus propias métricas via MCP de Arize y ajustar su comportamiento.
+Lo realmente interesante es lo que pasa con las búsquedas del cliente. Cuando el vendedor carga sus productos, el sistema no solo guarda el nombre — guarda una "huella digital" de cada producto (llamada embedding) que captura su significado visual y semántico. Cuando un cliente busca "sal" o saca una foto de un paquete de sal, el sistema compara esa huella con todas las huellas guardadas y encuentra los productos más similares en tiendas cercanas. Es lo mismo que hace Google Photos cuando te agrupa fotos por persona — pero aplicado a productos en almacenes de barrio.
 
 ---
 
-## 5. ESTRUCTURA DE DATOS EN MONGODB
+## ¿Por qué es diferente a todo lo que existe?
 
-### Colección: `stores`
-```json
-{
-  "_id": "store_uuid",
-  "slug": "don-pepe",
-  "name": "Almacén Don Pepe",
-  "owner_id": "user_uuid",
-  "address": {
-    "street": "Rivadavia 450",
-    "city": "Río Cuarto",
-    "province": "Córdoba",
-    "country": "Argentina",
-    "coordinates": [-33.1232, -64.3493]
-  },
-  "category": "almacén",
-  "config": {
-    "primary_color": "#2E7D32",
-    "logo_url": null,
-    "banner_url": null,
-    "hours": "8:00-20:00",
-    "delivery": false,
-    "whatsapp": "+5493584123456"
-  },
-  "description": "Almacén de barrio con fiambrería",
-  "created_at": "2026-05-09T18:00:00Z",
-  "published": true
-}
-```
-
-### Colección: `products`
-```json
-{
-  "_id": "product_uuid",
-  "store_id": "store_uuid",
-  "name": "Aceite Cocinero 900ml",
-  "category": "aceites",
-  "price": 1800,
-  "currency": "ARS",
-  "available": true,
-  "needs_review": false,
-  "detection_confidence": 0.94,
-  "image_url": null,
-  "embedding": [0.023, -0.145, ...],  // vector para búsqueda semántica
-  "created_at": "2026-05-09T18:02:00Z",
-  "updated_at": "2026-05-09T18:10:00Z"
-}
-```
-
-### Vector Search Index
-```json
-{
-  "mappings": {
-    "fields": {
-      "embedding": {
-        "type": "knnVector",
-        "dimensions": 1536,
-        "similarity": "cosine"
-      }
-    }
-  }
-}
-```
+| | Tiendanube / Shopify | Google Maps | SnapShop |
+|---|---|---|---|
+| Tiempo para tener tienda | 1-2 semanas | No aplica | ~5 minutos |
+| Carga de productos | Manual, uno por uno | No aplica | Una foto |
+| Buscar por foto | No | No | Sí |
+| Buscar en múltiples tiendas | No | Limitado | Sí |
+| Información de stock real | No | No | Sí |
+| Perfil del vendedor requerido | Conocimiento técnico | — | Cualquier persona |
 
 ---
 
-## 6. STACK TÉCNICO
+## ¿Para quién es?
 
-| Capa | Tecnología | Por qué |
-|------|-----------|---------|
-| Agente | Python ADK | Requerimiento hackathon, nativo en Google Cloud |
-| Visión + Texto | Gemini 2.0 Flash | Multimodal, rápido, barato |
-| DB Principal | MongoDB Atlas | Track principal, vector search nativo |
-| Observabilidad | Arize Phoenix | Track secundario, monitorea calidad de visión |
-| Runtime | Agent Engine | Managed, stateful |
-| Backend | FastAPI + Cloud Run | Python, serverless |
-| Frontend | SvelteKit | Mínimo overhead, TypeScript |
-| Hosting FE | Vercel | Un comando para deployar |
-| Hosting BE | Cloud Run | Escala a cero, usa créditos de Google |
+**Vendedores:** cualquier persona que tenga un comercio físico y quiera que sus clientes lo encuentren online. El almacenero de 60 años. La kiosquera que no sabe qué es Shopify. El ferretero que no tiene tiempo para cargar 500 productos.
+
+**Clientes:** cualquier persona que quiera saber dónde encontrar algo cerca suyo sin perder tiempo. Especialmente útil en situaciones de urgencia (necesito algo ahora) o cuando no se sabe el nombre exacto de lo que se busca.
 
 ---
 
-## 7. DOS APPS EN UNA — ARQUITECTURA DE PRODUCTO
+## ¿Por qué importa?
 
-SnapShop es fundamentalmente una plataforma de dos caras que comparten la misma infraestructura y el mismo índice vectorial.
+El comercio de proximidad es la columna vertebral económica de miles de ciudades en Latinoamérica y el mundo. Cada vez que un vecino no encuentra lo que busca en su barrio y lo compra en un supermercado de cadena o en e-commerce, un comercio chico pierde. SnapShop no compite con el e-commerce — conecta a la gente con lo que ya existe a 200 metros de su casa.
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    INFRAESTRUCTURA SNAPSHOP                     │
-│                                                                 │
-│   snapshop.app/crear    →   App del Vendedor (SvelteKit)       │
-│   snapshop.app/[slug]   →   Tienda pública (SvelteKit SSR)     │
-│   snapshop.app/buscar   →   App del Cliente (SvelteKit)        │
-│                                                                 │
-│   Todo hosteado en Vercel · Backend en Cloud Run               │
-│   El vendedor NO necesita hosting propio                        │
-└─────────────────────────────────────────────────────────────────┘
-```
+Es tecnología de punta al servicio de la economía más simple y humana que existe: el almacén de la esquina.
 
 ---
 
-### APP 1 — VENDEDOR
+## El pitch en una oración
 
-#### Vista 1 — Landing
-```
-┌─────────────────────────────────────────────────┐
-│  📸 SnapShop                                    │
-│  Tu tienda online en una foto                   │
-│                                                 │
-│  [Crear mi tienda gratis →]                     │
-└─────────────────────────────────────────────────┘
-```
+> *"SnapShop le da al almacenero de la esquina lo que Shopify solo le da a quien tiene tiempo, dinero y conocimiento técnico — en una foto y cinco minutos."*
 
-#### Vista 2 — Chat con el Agente
-```
-┌─────────────────────────────────────────────────┐
-│  SnapShop Agent                                 │
-├─────────────────────────────────────────────────┤
-│  🤖 ¡Hola! Vamos a crear tu tienda.             │
-│     ¿Cómo se llama tu negocio?                  │
-│                                                 │
-│  👤 Almacén Don Pepe                            │
-│                                                 │
-│  🤖 Perfecto. ¿En qué dirección estás?          │
-│                                                 │
-│  👤 Rivadavia 450, Río Cuarto                   │
-│                                                 │
-│  🤖 Genial. Ahora sacá una foto a tu            │
-│     estantería y subila acá 👇                  │
-│                                                 │
-│  [📷 Subir foto]                               │
-│                                                 │
-│  ── Analizando imagen... ──                     │
-│                                                 │
-│  🤖 Detecté 23 productos ✅                     │
-│     Tu tienda está en:                          │
-│     snapshop.app/don-pepe                       │
-│     ¿Querés cambiar algo?                       │
-├─────────────────────────────────────────────────┤
-│  Escribí algo...                    [Enviar]   │
-└─────────────────────────────────────────────────┘
-```
+---
+---
 
-#### Vista 3 — Tienda pública hosteada en SnapShop
-```
-URL: snapshop.app/don-pepe  ← hosteada en nuestra infra
+# IDEA 2 — FREIGHT-SAVER
 
-┌─────────────────────────────────────────────────┐
-│  Almacén Don Pepe                 📍 200m       │
-│  Rivadavia 450 · Abre 8:00-20:00               │
-├─────────────────────────────────────────────────┤
-│  ACEITES              YERBA/MATE    LÁCTEOS     │
-│  ┌──────────┐         ┌──────────┐             │
-│  │ Cocinero │         │Playadito │             │
-│  │ 900ml    │         │ 500g     │             │
-│  │  $1.800  │         │  $2.100  │             │
-│  └──────────┘         └──────────┘             │
-├─────────────────────────────────────────────────┤
-│  [📍 Cómo llegar]  [💬 WhatsApp]               │
-└─────────────────────────────────────────────────┘
-```
+## ¿Qué es?
+
+Freight-Saver es un agente autónomo de rescate logístico. Cuando un camión de carga crítica sufre una falla mecánica o de refrigeración en ruta, el agente detecta la crisis, evalúa todas las opciones disponibles en la flota, toma la decisión óptima de rescate, y ejecuta las acciones necesarias — en menos de 60 segundos, sin intervención humana inicial.
+
+No es un sistema de alertas. No es un dashboard. Es un agente que actúa.
 
 ---
 
-### APP 2 — CLIENTE
+## ¿Qué problema resuelve?
 
-El cliente no necesita saber nada del vendedor. Abre SnapShop y busca lo que necesita de DOS formas:
+Cada día, camiones que transportan carga crítica — medicamentos, vacunas, insulina, alimentos perecederos — sufren fallas en ruta. Cuando eso pasa, el proceso de rescate hoy es completamente manual:
 
-#### Búsqueda por texto
-```
-URL: snapshop.app/buscar
+1. El conductor llama a la central por teléfono
+2. El despachador busca frenéticamente en planillas qué camión está cerca
+3. Llama por radio a ese camión, negocia el desvío
+4. Avisa manualmente al cliente final
+5. Actualiza el sistema uno por uno
 
-┌─────────────────────────────────────────────────┐
-│  📸 SnapShop · Encontrá lo que necesitás        │
-├─────────────────────────────────────────────────┤
-│  [azúcar, fideos, yerba...          ] [Buscar]  │
-│                               [📷 Buscar por foto] │
-├─────────────────────────────────────────────────┤
-│  Resultados para "azúcar y fideos":             │
-│                                                 │
-│  📍 Almacén Don Pepe — 200m                    │
-│     ✅ Azúcar Ledesma 1kg — $850               │
-│     ✅ Fideos Matarazzo — $620                  │
-│     [Ver tienda] [Cómo llegar]                 │
-│                                                 │
-│  📍 Kiosco El Rápido — 350m                    │
-│     ✅ Azúcar — $900                           │
-│     ❌ Fideos no disponible                     │
-│     [Ver tienda] [Cómo llegar]                 │
-└─────────────────────────────────────────────────┘
-```
+**Todo esto toma entre 2 y 4 horas.**
 
-#### Búsqueda por foto (el diferencial técnico)
-```
-Cliente saca foto de un paquete de sal que tiene en casa
-    ↓
-Gemini genera embedding de la imagen del cliente
-    ↓
-Vector search en MongoDB:
-  - similitud de embedding (imagen cliente ≈ imagen del producto en tienda)
-  - filtro geoespacial (tiendas en radio X km del cliente)
-    ↓
-Resultado: tiendas cercanas que tienen ESE producto
-  (aunque el cliente no sepa el nombre exacto)
-```
+En ese tiempo, una partida de insulina se echa a perder. Una carga de vacunas para una comunidad rural se pierde. Un hospital no recibe lo que necesitaba.
 
-**Por qué esto es poderoso:** el cliente puede buscar con una foto borrosa, sin saber la marca, sin saber el nombre. El vector search encuentra matches por similitud visual, no por texto exacto.
+El problema no es la falla del camión. El problema es que la respuesta humana es demasiado lenta para la urgencia de la situación.
 
 ---
 
-### EL ÍNDICE VECTORIAL — UN SOLO ÍNDICE, DOS CASOS DE USO
+## ¿Qué hace?
 
-```
-FLUJO VENDEDOR (escritura):
-  Foto estantería → Gemini detecta producto
-  → genera embedding del producto
-  → guarda en MongoDB con coordenadas de la tienda
+Freight-Saver monitorea la flota en tiempo real. Cuando detecta una crisis (falla de motor, temperatura fuera de rango, camión detenido), actúa en cuatro pasos simultáneos:
 
-FLUJO CLIENTE TEXTO (lectura):
-  "sal de mesa" → Gemini genera embedding del texto
-  → vector search por similitud semántica + geolocalización
-  → encuentra tiendas con ese producto cerca
+**1. Entiende qué hay en juego:** consulta la base de datos operativa para saber exactamente qué lleva el camión averiado, qué temperatura requiere la carga, cuánto tiempo queda antes de que se eche a perder, y qué penalidad contractual hay por no entregar a tiempo.
 
-FLUJO CLIENTE FOTO (lectura):
-  Foto del producto → Gemini genera embedding de la imagen
-  → vector search por similitud visual + geolocalización
-  → encuentra tiendas con ese producto cerca
-```
+**2. Busca el rescate óptimo:** analiza toda la flota activa en tiempo real — posición GPS, espacio disponible, capacidad de refrigeración, distancia al incidente — y encuentra los candidatos que pueden llegar a tiempo.
 
-Los embeddings de Gemini son multimodales — un embedding de texto y un embedding de imagen del mismo producto van a quedar cercanos en el espacio vectorial. Eso es lo que hace posible buscar por foto y encontrar resultados cargados por texto, y viceversa.
+**3. Decide:** evalúa los candidatos contra las restricciones del problema (temperatura, volumen, tiempo crítico) y elige el rescate óptimo. Si hay empate, reserva un backup automáticamente.
+
+**4. Ejecuta en paralelo:** reasigna la carga en el sistema, actualiza la ruta del camión de rescate, notifica al cliente afectado con un mensaje claro ("su entrega se retrasará 35 minutos, la cadena de frío está garantizada"), y le avisa al despachador humano que todo está resuelto — por si quiere revisar o revertir.
+
+El despachador humano no desaparece. Recibe un resumen completo de lo que pasó y por qué el agente tomó cada decisión. Siempre puede intervenir. Pero en el 90% de los casos, no necesita hacer nada.
 
 ---
 
-### INFRAESTRUCTURA DE HOSTING
+## ¿Cómo lo hace? (sin tecnicismos)
 
-```
-snapshop.app  (Vercel)
-  ├── /crear          → onboarding del vendedor + chat con agente
-  ├── /[slug]         → tienda pública generada (SSR, dinámica)
-  │     └── don-pepe, kiosco-el-rapido, ferreteria-centro...
-  └── /buscar         → app del cliente (búsqueda texto + foto)
+El agente tiene acceso a dos fuentes de información complementarias:
 
-API (Cloud Run)
-  ├── POST /agent/onboard      → inicia sesión del agente
-  ├── POST /agent/message      → mensajes del chat
-  ├── POST /search/text        → búsqueda por texto
-  ├── POST /search/image       → búsqueda por imagen
-  └── GET  /stores/[slug]      → datos de la tienda pública
+**La base de datos operativa (MongoDB):** es la fuente de verdad. Sabe qué lleva cada camión, quién es el cliente, cuáles son los SLAs y penalidades, y cuál es el historial de cada envío. Cuando el agente necesita entender qué hay en juego, va acá.
 
-MongoDB Atlas
-  ├── stores collection        → info y config de cada tienda
-  ├── products collection      → catálogo con embeddings
-  └── Vector Search Index      → búsqueda multimodal
-```
+**El motor de búsqueda en tiempo real (Elastic):** es el cerebro de la decisión. Tiene indexados todos los camiones de la flota con su posición GPS actualizada cada 30 segundos, su temperatura actual, su espacio disponible y sus capacidades. Cuando el agente necesita encontrar el rescate óptimo, hace una búsqueda geoespacial multi-criterio acá — combina distancia, temperatura y capacidad en un solo score de relevancia, como Google combina decenas de factores para rankear resultados.
 
-**El vendedor comparte un link** (snapshop.app/don-pepe) y ese link funciona para siempre, hosteado en nuestra infraestructura, sin que el vendedor tenga que hacer nada más.
+Los dos son necesarios. Sin MongoDB, el agente no sabe qué hay en juego ni puede actualizar el sistema. Sin Elastic, no puede encontrar el rescate óptimo en tiempo real. Ninguno reemplaza al otro.
 
 ---
 
-## 8. CASOS BORDE DEL AGENTE
+## ¿Por qué es diferente a todo lo que existe?
 
-| Situación | Comportamiento |
-|-----------|---------------|
-| Foto muy oscura o borrosa | Agente pide otra foto antes de procesar |
-| Producto con confianza < 0.7 | Se agrega con flag, agente avisa al vendedor |
-| Precio no visible en la imagen | Producto creado sin precio, agente pregunta |
-| Texto en otro idioma | Gemini detecta y traduce automáticamente |
-| Estantería con >100 productos | Procesa en batches, muestra progreso |
-| Cliente busca algo que no existe | Agente sugiere productos similares disponibles |
-| Vendedor pide algo imposible | Agente explica limitaciones con alternativas |
+| | GPS / Waze | Software logístico tradicional | Freight-Saver |
+|---|---|---|---|
+| Detecta fallas | ❌ | ⚠️ Alerta, no actúa | ✅ Detecta y actúa |
+| Busca camión de rescate | ❌ | Manual | ✅ Automático |
+| Considera refrigeración + capacidad + distancia | ❌ | Manual | ✅ En una query |
+| Reasigna carga en el sistema | ❌ | Manual | ✅ Automático |
+| Notifica al cliente | ❌ | Manual | ✅ Automático |
+| Tiempo de respuesta | — | 2-4 horas | < 60 segundos |
 
----
-
-## 9. PITCH PARA LOS JUECES
-
-> *"El 90% de los comercios chicos del mundo no tienen presencia online. No es porque no quieran — es porque el proceso es demasiado complejo. Tiendanube tarda 1-2 semanas. Shopify requiere conocimiento técnico. Nuestro agente lo hace en una foto y una conversación."*
-
-**Por qué gana en el track de MongoDB:**
-- MongoDB Atlas es la base de todo el catálogo — no es un extra, es el core
-- Vector Search es lo que hace posible que un cliente busque "sal" y encuentre "sal fina", "sal gruesa", "sal entrefina" en distintas tiendas
-- La integración es meaningful, no decorativa
-
-**Por qué Arize agrega valor real:**
-- No es un extra para sumar puntos — monitorea activamente la calidad de las detecciones
-- El agente puede consultar sus propias métricas y mejorar su comportamiento
-- Es el loop de self-improvement que los jueces de Arize valoran
+El software logístico tradicional avisa que algo salió mal. Freight-Saver resuelve el problema.
 
 ---
 
-## 10. DEFINICIÓN DE DONE — HACKATHON SCOPE
+## ¿Para quién es?
 
-Para el 11 de junio, el proyecto está completo cuando:
+**Empresas de transporte de carga crítica:** especialmente las que manejan cadena de frío — farmacéuticas, distribuidoras de alimentos perecederos, operadores logísticos que trabajan con hospitales y clínicas.
 
-- [ ] Agente completa el onboarding conversacional
-- [ ] Gemini Vision detecta productos de una foto real
-- [ ] Productos guardados correctamente en MongoDB con embeddings
-- [ ] Tienda pública generada y accesible por URL
-- [ ] Customización conversacional funciona (al menos 3 comandos)
-- [ ] Vector search retorna tiendas con el producto buscado
-- [ ] Arize loguea trazas de detección con confidence scores
-- [ ] Frontend vendedor (chat + preview) deployado en Vercel
-- [ ] Frontend cliente (búsqueda + resultado) deployado en Vercel
-- [ ] Backend deployado en Cloud Run
-- [ ] Repo público con LICENSE
-- [ ] Video demo de 3 minutos
+**Despachadores:** que hoy pasan su día apagando incendios manualmente. Freight-Saver les devuelve tiempo y les elimina la ansiedad de una crisis nocturna.
 
-**Fuera de scope:**
-- Pagos y checkout
-- Autenticación robusta (para demo alcanza con user_id simple)
-- Actualización de stock en tiempo real
-- Notificaciones push
-- App nativa (iOS/Android) — web mobile es suficiente
+**Clientes finales** (hospitales, supermercados, distribuidoras): que necesitan certeza de entrega más que excusas.
 
 ---
 
-## 11. PLAN DE TRABAJO (33 días · tiempo parcial)
+## ¿Por qué importa?
 
-### Semana 1 (9-16 mayo) — Fundaciones
-- Setup Google Cloud + MongoDB Atlas + Arize Phoenix
-- Agente básico en ADK con MongoDB MCP conectado
-- Primer test de Gemini Vision detectando productos de una foto
+Las fallas logísticas en cadena de frío tienen consecuencias reales: medicamentos que no llegan a pacientes que los necesitan, alimentos que se pierden cuando hay escasez, penalidades contractuales millonarias. El costo promedio de un incidente de cadena de frío no resuelto a tiempo supera los $50.000 USD entre pérdida de mercadería, penalidades y daño a la relación con el cliente.
 
-### Semana 2 (16-23 mayo) — Core del agente
-- Flujo completo de onboarding → foto → detección → MongoDB
-- Vector search funcionando para búsqueda de productos
-- Arize logueando trazas
+Freight-Saver no elimina las fallas. Elimina el tiempo de respuesta humana que convierte una falla manejable en una catástrofe.
 
-### Semana 3 (23-30 mayo) — Frontend
-- SvelteKit: vista del chat con el agente
-- Vista de la tienda pública generada
-- Vista de búsqueda del cliente
+---
 
-### Semana 4 (30 mayo-6 junio) — Polish + Deploy
-- Customización conversacional
-- Deploy completo (Cloud Run + Vercel + Agent Engine)
-- Testing con casos reales (fotos de estanterías reales)
+## El pitch en una oración
 
-### Días finales (6-11 junio) — Submission
-- Grabación del video demo
-- README completo
-- Submission en Devpost
+> *"450 unidades de insulina. Un hospital que las esperaba. Un camión varado en la Ruta 9. Nuestro agente resolvió el rescate completo en 52 segundos, sin que ningún humano tuviera que hacer nada. Eso es lo que significa que la IA tome acción."*
